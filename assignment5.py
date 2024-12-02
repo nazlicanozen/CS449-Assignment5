@@ -71,6 +71,24 @@ with mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5) a
         elapsed_time = time.time() - start_time
         remaining_time = max(0, game_duration - elapsed_time)
 
+        # Display chronometer
+        time_text = f"Time: {int(remaining_time)}s"
+        (text_width, text_height), _ = cv2.getTextSize(time_text, cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+
+        # Set position of the top-right corner
+        right_top_x = width - text_width - 10
+        right_top_y = text_height + 10 # Adjusted to stay at the top
+
+        cv2.putText(
+            frame,
+            time_text,
+            (right_top_x, right_top_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (255, 255, 255) if remaining_time > 10 else (0, 0, 255),
+            2,
+        )
+
         # When time is up, game is no more active
         if remaining_time <= 0:
             game_active = False
