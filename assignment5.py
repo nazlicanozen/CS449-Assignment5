@@ -1,6 +1,7 @@
 import cv2
 import mediapipe as mp
 import random
+import time
 
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
@@ -9,6 +10,8 @@ mp_drawing = mp.solutions.drawing_utils
 cap = cv2.VideoCapture(0)
 dots = []  # List to store falling dots
 score = 0
+game_duration = 60 # Game finishes in 60 secs
+start_time = time.time() # Started time for counting
 
 # Function to check if the hand is flat
 # The dots will only be collectible when the hand is flat
@@ -63,21 +66,31 @@ with mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5) a
                     cv2.putText(frame, "Collect dots!", (hand_x + 30, hand_y), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2) 
 
+        # Calculate remaining time
+        game_active = True # Indicate game is active
+        elapsed_time = time.time() - start_time
+        remaining_time = max(0, game_duration - elapsed_time)
+
+        # When time is up, game is no more active
+        if remaining_time <= 0:
+            game_active = False
+
         # Update game dots
-        for dot in dots[:]:
-            dot['y'] += 5  # Dots fall down
-            cv2.circle(frame, (dot['x'], dot['y']), 10, (0, 255, 0), -1)  # Draw dots
+        if game_active:
+            for dot in dots[:]:
+                dot['y'] += 5  # Dots fall down
+                cv2.circle(frame, (dot['x'], dot['y']), 10, (0, 255, 0), -1)  # Draw dots
 
-            # Check for collision with a flat hand
-            if flat_hand_detected and abs(dot['x'] - hand_x) < 30 and abs(dot['y'] - hand_y) < 30:
-                dots.remove(dot)
-                score += 1  # Increase score
+                # Check for collision with a flat hand
+                if flat_hand_detected and abs(dot['x'] - hand_x) < 30 and abs(dot['y'] - hand_y) < 30:
+                    dots.remove(dot)
+                    score += 1  # Increase score
 
-            # Remove dot if it reaches the bottom
-            elif dot['y'] > height:
-                dots.remove(dot)
+                # Remove dot if it reaches the bottom
+                elif dot['y'] > height:
+                    dots.remove(dot)
 
-        # Generate new dotsrandomly
+        # Generate new dots randomly
         if random.randint(1, 20) == 1:  # Adjust the frequency
             dots.append({'x': random.randint(50, width - 50), 'y': 0})
 
