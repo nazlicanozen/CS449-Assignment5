@@ -11,21 +11,22 @@ cap = cv2.VideoCapture(0)
 dots = []  # List to store falling dots
 score = 0
 game_duration = 60  # Game finishes in 60 secs
-start_time = time.time()  # Started time for counting
+start_time = time.time()  # Start time for the game
 
-# Function to check if the hand is flat
-def is_hand_flat(landmarks, width, height):
+# Function to detect pinch gesture
+def is_pinch_detected(landmarks, width, height):
     """
-    Check if the hand is flat based on the y-coordinates of the fingertips.
+    Check if the pinch gesture is detected based on the distance between thumb and index fingertips.
     """
-    y_thumb = landmarks[mp_hands.HandLandmark.THUMB_TIP].y * height
-    y_index = landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP].y * height
-    y_middle = landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_TIP].y * height
-    y_ring = landmarks[mp_hands.HandLandmark.RING_FINGER_TIP].y * height
-    y_pinky = landmarks[mp_hands.HandLandmark.PINKY_TIP].y * height
+    thumb_tip = landmarks[mp_hands.HandLandmark.THUMB_TIP]
+    index_tip = landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP]
 
-    return max(abs(y_thumb - y_index), abs(y_index - y_middle),
-               abs(y_middle - y_ring), abs(y_ring - y_pinky)) < 20
+    thumb_tip_x, thumb_tip_y = int(thumb_tip.x * width), int(thumb_tip.y * height)
+    index_tip_x, index_tip_y = int(index_tip.x * width), int(index_tip.y * height)
+
+    # Calculate Euclidean distance between thumb and index fingertips
+    distance = ((thumb_tip_x - index_tip_x)**2 + (thumb_tip_y - index_tip_y)**2)**0.5
+    return distance < 30  # Pinch detected if the distance is <30 pixels
 
 # Initialize OpenCV window and trackbar
 cv2.namedWindow("Falling Colourful Dots")
@@ -33,6 +34,7 @@ cv2.createTrackbar("Difficulty", "Falling Colourful Dots", 1, 10, lambda x: None
 
 # Start MediaPipe Hands
 with mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5) as hands:
+    last_pinch_time = 0  # To avoid rapid changes in difficulty
     while cap.isOpened():
         success, frame = cap.read()
         if not success:
@@ -46,24 +48,19 @@ with mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5) a
         results = hands.process(frame_rgb)
         height, width, _ = frame.shape
 
-        # Draw hand landmarks and detect a flat hand
-        flat_hand_detected = False
-        hand_x, hand_y = 0, 0
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
                 mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-                # Check if the hand is flat
-                if is_hand_flat(hand_landmarks.landmark, width, height):
-                    flat_hand_detected = True
-                    # Use the wrist position to detect dot collection
-                    hand_x = int(hand_landmarks.landmark[mp_hands.HandLandmark.WRIST].x * width)
-                    hand_y = int(hand_landmarks.landmark[mp_hands.HandLandmark.WRIST].y * height)
-                    # Draw a marker for the wrist position
-                    cv2.circle(frame, (hand_x, hand_y), 20, (173, 255, 47), -1)
-                    # Add label "Collect dots!" near the wrist
-                    cv2.putText(frame, "Collect dots!", (hand_x + 30, hand_y),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                # Check for pinch gesture
+                if is_pinch_detected(hand_landmarks.landmark, width, height):
+                    current_time = time.time()
+                    if current_time - last_pinch_time > 0.5:  # 0.5 seconds debounce time
+                        # Update difficulty (cycle through 1-10)
+                        current_difficulty = cv2.getTrackbarPos("Difficulty", "Falling Colourful Dots")
+                        new_difficulty = (current_difficulty % 10) + 1  # Increment difficulty, wrap at 10
+                        cv2.setTrackbarPos("Difficulty", "Falling Colourful Dots", new_difficulty)
+                        last_pinch_time = current_time
 
         # Get difficulty level from slider
         difficulty = cv2.getTrackbarPos("Difficulty", "Falling Colourful Dots")
@@ -101,13 +98,8 @@ with mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5) a
                 dot['y'] += speed  # Dots fall faster with higher difficulty
                 cv2.circle(frame, (dot['x'], dot['y']), size, (0, 255, 0), -1)  # Draw dots
 
-                # Check for collision with a flat hand
-                if flat_hand_detected and abs(dot['x'] - hand_x) < 30 and abs(dot['y'] - hand_y) < 30:
-                    dots.remove(dot)
-                    score += 1  # Increase score
-
                 # Remove dot if it reaches the bottom
-                elif dot['y'] > height:
+                if dot['y'] > height:
                     dots.remove(dot)
 
         # Generate new dots randomly based on frequency
